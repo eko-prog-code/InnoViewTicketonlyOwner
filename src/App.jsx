@@ -1,29 +1,48 @@
 import { useEffect, useState } from "react";
 import { ethers } from "ethers";
-import {
-  getReadContract,
-  getWriteContract
-} from "./blockchain/contract";
+import { getReadContract, getWriteContract } from "./blockchain/contract";
 import TicketForm from "./components/TicketForm";
 import TicketList from "./components/TicketList";
-import { LogOut, Wallet } from "lucide-react";
+import { Wallet, LogOut } from "lucide-react";
 
 export default function App() {
   const [tickets, setTickets] = useState([]);
   const [account, setAccount] = useState(null);
   const [owner, setOwner] = useState(null);
   const [search, setSearch] = useState("");
+  const [error, setError] = useState(null);
 
   const isOwner =
     account && owner && account.toLowerCase() === owner.toLowerCase();
 
+  /* ✅ LOAD DATA TANPA WALLET */
   const loadTickets = async () => {
-    const contract = getReadContract();
-    const data = await contract.getAllTickets();
-    setTickets(data);
+    try {
+      const contract = getReadContract();
+      const data = await contract.getAllTickets();
+      setTickets(data);
+    } catch (err) {
+      console.error(err);
+      setError("Gagal memuat data blockchain");
+    }
+  };
+
+  const loadOwner = async () => {
+    try {
+      const contract = getReadContract();
+      const ownerAddr = await contract.owner();
+      setOwner(ownerAddr);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const connectWallet = async () => {
+    if (!window.ethereum) {
+      alert("Gunakan MetaMask / browser wallet");
+      return;
+    }
+
     const provider = new ethers.BrowserProvider(window.ethereum);
     const accounts = await provider.send("eth_requestAccounts", []);
     setAccount(accounts[0]);
@@ -34,20 +53,23 @@ export default function App() {
   };
 
   const mintTicket = async (name) => {
-    const contract = await getWriteContract();
-    const tx = await contract.issueTicket(name);
-    await tx.wait();
-    loadTickets();
+    try {
+      const contract = await getWriteContract();
+      const tx = await contract.issueTicket(name);
+      await tx.wait();
+      loadTickets();
+    } catch (err) {
+      alert("Mint gagal");
+    }
   };
 
   useEffect(() => {
     loadTickets();
-    getReadContract().owner().then(setOwner);
+    loadOwner();
   }, []);
 
   return (
     <div className="container">
-      {/* HEADER */}
       <header>
         <div>
           <h2>🎟 Ticket InnoView Academy</h2>
@@ -71,10 +93,8 @@ export default function App() {
         )}
       </header>
 
-      {/* OWNER FORM */}
       {isOwner && <TicketForm onMint={mintTicket} />}
 
-      {/* SEARCH + LINK */}
       <div className="list-header">
         <input
           className="search"
@@ -82,16 +102,13 @@ export default function App() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <a
-          href="https://eth-sepolia.blockscout.com/address/0x92228f213CCE1b317f112bd09C70E03e73c77095"
-          target="_blank"
-        >
-          View Blockchain ↗
-        </a>
       </div>
 
-      {/* LIST */}
-      <TicketList tickets={tickets} search={search} />
+      {error ? (
+        <p style={{ color: "red" }}>{error}</p>
+      ) : (
+        <TicketList tickets={tickets} search={search} />
+      )}
     </div>
   );
 }
